@@ -740,6 +740,21 @@ app.delete('/api/authors/:id', (req,res) => {
     }
 });
 
+// --- AUTH ENDPOINTS ---
+app.post('/api/auth/login', (req, res) => {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: "Missing password" });
+
+    // Default admin auth (simplified for config-manager)
+    const correctPassword = 'admin'; // CHANGE THIS!
+    
+    if (password === correctPassword) {
+        res.json({ ok: true, message: "Login successful", admin: true });
+    } else {
+        res.status(401).json({ error: "Invalid password" });
+    }
+});
+
 // --- NEW AUTHOR AUTH ---
 app.post('/api/author/set-password', (req, res) => {
     const { author_id, password } = req.body;

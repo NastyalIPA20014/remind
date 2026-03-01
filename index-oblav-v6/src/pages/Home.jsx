@@ -104,27 +104,84 @@ const Home = ({ theme, toggleTheme, onOpenConscienceCall, showRegionModal, setSh
     setShowIntro(isFirstVisit);
   }, []);
 
+  // ✨ Function to reload widgets (called when admin changes widgets)
+  const reloadWidgets = useCallback(async () => {
+    console.log('🔄 Reloading widgets...');
+    try {
+      const w = await api.getWidgets();
+      console.log('🎨 Widgets reloaded:', w?.length);
+      if (Array.isArray(w)) {
+        setWidgets(w);
+        const userId = localStorage.getItem('user_id') || 'default';
+        const res = await api.getWidgetLayout(userId);
+        if (res?.order && Array.isArray(res.order)) {
+          setWidgetOrder(res.order);
+        } else {
+          setWidgetOrder(w.map(wid => wid.id));
+        }
+      }
+    } catch (e) {
+      console.error('❌ Failed to reload widgets:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Listen for widget updates from config-manager
+    window.addEventListener('widgets_updated', reloadWidgets);
+    return () => window.removeEventListener('widgets_updated', reloadWidgets);
+  }, [reloadWidgets]);
+
   useEffect(() => {
     const load = async () => {
         try {
-            api.getNews().then(n => setNews(n.slice(0,2)));
-            api.getButtons().then(setButtons);
+            console.log('📡 [Home] Loading widgets...');
+            api.getNews().then(n => {
+                console.log('📰 News loaded:', n?.length);
+                setNews(n?.slice(0,2) || []);
+            });
+            api.getButtons().then(b => {
+                console.log('🔘 Buttons loaded:', b?.length);
+                setButtons(b || []);
+            });
             
-            // вИджеты 
+            // WIDGETS - ГЛАВНОЕ!
             api.getWidgets().then(w => {
+                console.log('🎨 Widgets loaded from server:', w);
+                console.log('   Widget count:', Array.isArray(w) ? w.length : 'NOT ARRAY');
+                if (!Array.isArray(w)) {
+                    console.error('❌ Widgets is not an array:', w);
+                    setWidgets([]);
+                    return;
+                }
+                
                 setWidgets(w);
                 // Load saved widget order
                 const userId = localStorage.getItem('user_id') || 'default';
                 api.getWidgetLayout(userId).then(res => {
+                    console.log('🎯 Widget layout result:', res);
                     if (res?.order && Array.isArray(res.order)) {
+                        console.log('✅ Using saved order:', res.order);
                         setWidgetOrder(res.order);
                     } else {
-                        setWidgetOrder(w.map(wid => wid.id));
+                        console.log('📝 Creating new order from widgets');
+                        const newOrder = w.map(wid => wid.id);
+                        console.log('   New order:', newOrder);
+                        setWidgetOrder(newOrder);
                     }
                 });
+            }).catch(e => {
+                console.error('❌ Failed to load widgets:', e);
+                setWidgets([]);
             });
-            api.getPopups().then(setPopups);
-            api.getAuthors().then(setAuthors);
+            
+            api.getPopups().then(p => {
+                console.log('💬 Popups loaded:', p?.length);
+                setPopups(p || []);
+            });
+            api.getAuthors().then(a => {
+                console.log('👥 Authors loaded:', a?.length);
+                setAuthors(a || []);
+            });
         } catch(e){ console.error("Error loading initial data:", e); }
     };
     load();
@@ -263,7 +320,7 @@ const Home = ({ theme, toggleTheme, onOpenConscienceCall, showRegionModal, setSh
 
       <TutorialOverlay pageId="home" tutorials={tutorialData.home} theme={theme} />
 
-      <motion.div initial={{opacity:0}} animate={{opacity:1}} className="px-5 pt-14 pb-8 space-y-8 max-w-md mx-auto">
+      <motion.div initial={{opacity:0}} animate={{opacity:1}} className="px-5 pt-14 pb-8 space-y-8 max-w-4xl mx-auto">
       <header className="flex justify-between items-center">
           <div className="flex-1">
               <motion.h1 
@@ -339,31 +396,57 @@ const Home = ({ theme, toggleTheme, onOpenConscienceCall, showRegionModal, setSh
           </div>
       ))}</div>
       
-      <div className="grid grid-cols-2 gap-4">
-        {widgetOrder.length > 0 
-          ? widgetOrder.map(widgetId => {
-              const w = widgets.find(wid => wid.id === widgetId);
-              if (!w) return null;
-              
-              if (isEditingWidgets) {
-                return (
-                  <motion.div
-                    key={w.id}
-                    draggable
-                    onDragStart={(e) => handleWidgetDragStart(e, w.id)}
-                    onDragOver={handleWidgetDragOver}
-                    onDrop={(e) => handleWidgetDrop(e, w.id)}
-                    className={`cursor-move opacity-75 ring-2 ring-blue-500/50 rounded-xl overflow-hidden ${draggedWidget === w.id ? 'opacity-50' : ''}`}
-                  >
-                    {renderWidget(w)}
-                  </motion.div>
-                );
-              }
-              
-              return renderWidget(w);
-            })
-          : widgets.map(w => renderWidget(w))
-        }
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {widgets && widgets.length > 0 ? (
+          widgetOrder && widgetOrder.length > 0 
+            ? widgetOrder.map(widgetId => {
+                const w = widgets.find(wid => wid.id === widgetId);
+                if (!w) {
+                  console.warn(`⚠️ Widget ${widgetId} not found in widgets array`);
+                  return null;
+                }
+                
+                if (isEditingWidgets) {
+                  return (
+                    <motion.div
+                      key={w.id}
+                      draggable
+                      onDragStart={(e) => handleWidgetDragStart(e, w.id)}
+                      onDragOver={handleWidgetDragOver}
+                      onDrop={(e) => handleWidgetDrop(e, w.id)}
+                      className={`cursor-move opacity-75 ring-2 ring-blue-500/50 rounded-xl overflow-hidden ${draggedWidget === w.id ? 'opacity-50' : ''}`}
+                    >
+                      {renderWidget(w)}
+                    </motion.div>
+                  );
+                }
+                
+                return renderWidget(w);
+              })
+            : widgets.map(w => {
+                console.log('🎨 Rendering widget:', w.id, w.title);
+                if (isEditingWidgets) {
+                  return (
+                    <motion.div
+                      key={w.id}
+                      draggable
+                      onDragStart={(e) => handleWidgetDragStart(e, w.id)}
+                      onDragOver={handleWidgetDragOver}
+                      onDrop={(e) => handleWidgetDrop(e, w.id)}
+                      className={`cursor-move opacity-75 ring-2 ring-blue-500/50 rounded-xl overflow-hidden ${draggedWidget === w.id ? 'opacity-50' : ''}`}
+                    >
+                      {renderWidget(w)}
+                    </motion.div>
+                  );
+                }
+                return renderWidget(w);
+              })
+        ) : (
+          <div className="col-span-2 py-12 text-center text-gray-500">
+            <p>📦 Нет виджетов</p>
+            <p className="text-xs mt-2 text-gray-600">Добавьте виджеты в Config Manager</p>
+          </div>
+        )}
       </div>
 
       {isEditingWidgets && (
